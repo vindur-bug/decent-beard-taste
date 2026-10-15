@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311", "libxcb", "libx11", "libxext", "libxrender", "libgl", "libglib2.0-0", "libsm", "libice"]
+nixPkgs = ["python311", "libGL", "libglib2.0-0", "libsm", "libxext", "libxrender", "libxcb", "libx11", "libx11-xcb"]
 
 [phases.install]
 cmds = ["pip install --no-cache-dir -r requirements.txt"]
