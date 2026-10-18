@@ -216,3 +216,30 @@ async def get_task(task_id: str):
         print("错误信息:", str(e))
         print("====================")
         return {"error": "请求YouCam失败", "type": type(e).__name__, "message": str(e)}
+
+class HairTryOnRequest(BaseModel):
+    image: str       # 传入 file_id
+    templateId: str  # 传入 hairTemplateId
+
+@app.post("/api/hair-try-on")
+async def hair_try_on(request: HairTryOnRequest):
+    if not YOUCAM_API_KEY:
+        return {"task_id": "mock_hair_task_12345"}
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # 注意这里是 v2.1 的发型接口
+        response = await client.post(
+            "https://yce-api-01.makeupar.com/s2s/v2.1/task/hair-transfer",
+            headers={"Authorization": f"Bearer {YOUCAM_API_KEY}"},
+            json={
+                "src_file_id": request.image,
+                "template_id": request.templateId,
+                "hair_color": "src" # 保留用户原发色
+            }
+        )
+        data = response.json()
+        
+        if "data" not in data or "task_id" not in data.get("data", {}):
+            return {"error": "YouCam 发型生成任务提交失败", "raw": data}
+            
+        return {"task_id": data["data"]["task_id"]}
