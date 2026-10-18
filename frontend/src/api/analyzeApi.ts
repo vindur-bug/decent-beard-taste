@@ -9,7 +9,7 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === 'true';
 
 // 后台地址（集中配置）
 // 在 .env 文件中设置 VITE_API_BASE_URL
-const API_BASE_URL =
+export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'https://decent-beard-taste-production.up.railway.app';
 
 // Mock 模式下的模拟延迟（毫秒）

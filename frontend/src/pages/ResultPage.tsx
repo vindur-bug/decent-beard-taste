@@ -1,6 +1,6 @@
 // 分析结果页面
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   RotateCcw,
   Home,
@@ -25,8 +25,8 @@ import { extractHairlineLevel } from '@/config/hairlineConfig';
 import { displayApiText, resolveImageSource } from '@/utils/apiContent';
 import { isMockMode } from '@/api/analyzeApi';
 import { BeardOverlay } from '@/components/BeardOverlay';
-import { StylePreviewPlaceholder } from '@/components/StylePreviewPlaceholder';
 import { MascotMark } from '@/components/MascotMark';
+import { generateTryOn } from '@/api/tryOnApi';
 
 interface ResultPageProps {
   result: AnalysisResult;
@@ -36,6 +36,31 @@ interface ResultPageProps {
 }
 
 export function ResultPage({ result, previewUrl, onRestart, onReselect }: ResultPageProps) {
+  const [tryOnUrl, setTryOnUrl] = useState('');
+  const [tryOnLoading, setTryOnLoading] = useState(false);
+  const [tryOnError, setTryOnError] = useState('');
+  const tryOnController = useRef<AbortController | null>(null);
+  useEffect(() => () => { tryOnController.current?.abort(); }, []);
+
+  async function handleTryOn() {
+    const templateId = result.recommendedStyles?.[1];
+    if (typeof templateId !== 'string' || !templateId) {
+      setTryOnError('没有收到推荐胡须造型，暂时无法试戴。');
+      return;
+    }
+    const controller = new AbortController();
+    tryOnController.current = controller;
+    setTryOnLoading(true);
+    setTryOnError('');
+    try {
+      setTryOnUrl(await generateTryOn(previewUrl, templateId, controller.signal));
+    } catch (error) {
+      if (!controller.signal.aborted) setTryOnError(error instanceof Error ? error.message : '试戴生成失败，请重试。');
+    } finally {
+      if (!controller.signal.aborted) setTryOnLoading(false);
+      if (tryOnController.current === controller) tryOnController.current = null;
+    }
+  }
   // 提取发际线值（通过适配文件统一获取字段名）
   const hairlineValue = useMemo(() => extractHairlineLevel(result as Record<string, unknown>), [result]);
   const hasHairline = hairlineValue !== undefined && hairlineValue in hairlineLevelLabels;
@@ -79,16 +104,23 @@ export function ResultPage({ result, previewUrl, onRestart, onReselect }: Result
 
         <div className="grid items-center gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] lg:gap-7">
           {/* 顶部照片区域 + 演示标记 */}
+          <div>
           <div className="relative overflow-hidden rounded-3xl bg-stone-100 shadow-sm" style={{ aspectRatio: '1 / 1' }}>
-            <img src={previewUrl} alt="你的照片" className="h-full w-full object-contain" />
-            <BeardOverlay
+            <img src={tryOnUrl || previewUrl} alt={tryOnUrl ? '胡须试戴效果' : '你的照片'} className="h-full w-full object-contain" onError={() => { if (tryOnUrl) { setTryOnUrl(''); setTryOnError('试戴图片加载失败，请重试。'); } }} />
+            {!tryOnUrl && <BeardOverlay
               imageUrl={previewUrl}
               beardRegions={result.beardRegions}
               heatmapData={result.heatmapData}
-            />
+            />}
             <div className="absolute left-3 top-3 rounded-full bg-amber-900/90 px-3 py-1 text-xs font-medium text-amber-50 backdrop-blur-sm">
-              {isMockMode() ? '演示示例数据' : 'AI 分析结果'}
+              {tryOnUrl ? '胡须试戴效果' : isMockMode() ? '演示示例数据' : 'AI 分析结果'}
             </div>
+          </div>
+          <button type="button" onClick={handleTryOn} disabled={tryOnLoading} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-wait disabled:opacity-60">
+            <Sparkles className={`h-4 w-4 ${tryOnLoading ? 'animate-pulse' : ''}`} />
+            {tryOnLoading ? '正在生成试戴效果，请稍候…' : tryOnUrl ? '重新生成试戴效果' : '试戴推荐胡须'}
+          </button>
+          {tryOnError && <p role="alert" className="mt-2 text-center text-sm text-red-600">{tryOnError}</p>}
           </div>
 
           <aside className="relative flex min-h-[360px] flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-amber-900/5 bg-[#fffbed] px-6 py-5 text-center sm:min-h-[420px] lg:min-h-[500px]">
@@ -246,10 +278,6 @@ export function ResultPage({ result, previewUrl, onRestart, onReselect }: Result
           )}
         </ResultSection>
 
-        {/* 区块8：造型预览（示意效果占位） */}
-        <ResultSection icon={<Sparkles className="h-5 w-5 text-amber-800" />} title="造型预览">
-          <StylePreviewPlaceholder />
-        </ResultSection>
         </div>
       </div>
     </div>

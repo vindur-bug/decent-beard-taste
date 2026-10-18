@@ -18,6 +18,7 @@ export type RecommendedStyle =
   | 'natural_middle_part'
   | 'stubble_beard'
   | 'goatee'
+  | 'all_goatee'
   | 'full_beard'
   | 'short_boxed'
   | 'clean_shave';

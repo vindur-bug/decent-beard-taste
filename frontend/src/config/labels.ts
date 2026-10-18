@@ -35,6 +35,7 @@ export const hairstyleLabels: Partial<Record<RecommendedStyle, string>> = {
 export const beardStyleLabels: Partial<Record<RecommendedStyle, string>> = {
   stubble_beard: '短茬胡',
   goatee: '山羊胡',
+  all_goatee: '山羊胡',
   full_beard: '络腮胡',
   short_boxed: '短盒式胡须',
   clean_shave: '干净剃须',
