@@ -201,7 +201,7 @@ export function UploadPage({ onGenerate }: UploadPageProps) {
         {/* 隐私说明 */}
         <div className="mt-8 flex items-center justify-center gap-1.5 text-xs text-stone-400">
           <Upload className="h-3.5 w-3.5" />
-          照片仅在浏览器本地预览，不会上传到第三方服务
+          照片会发送至服务进行分析，试戴时也会上传以生成效果
         </div>
           </section>
         </main>
