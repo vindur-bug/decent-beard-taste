@@ -82,15 +82,49 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
     hairstyle_id = result["recommendedStyles"][0]
     beard_id = result["recommendedStyles"][1]
 
+        # ==========================================
+    # 🟢 修复点1：全量男士发型与 YouCam 真实 ID 映射
+    # ==========================================
     hair_mapping = {
-        "short_textured_side_part": {"styleName": "侧分短碎", "reason": "修饰脸型，清爽百搭", "imageUrl": "https://example.com/side-part.jpg", "difficulty": 1, "maintenance": "每3-4周修剪一次"},
-        "textured_perm": {"styleName": "纹理烫", "reason": "增加头顶蓬松度，视觉拉长脸型", "imageUrl": "https://example.com/textured-perm.jpg", "difficulty": 2, "maintenance": "每4-6周修剪一次"},
-        "natural_middle_part": {"styleName": "自然中分", "reason": "柔和面部轮廓，自然稳重", "imageUrl": "https://example.com/middle-part.jpg", "difficulty": 1, "maintenance": "每3-4周修剪一次"}
+        "short_textured_side_part": {
+            "styleName": "纹理寸头", "reason": "修饰脸型，清爽百搭", 
+            "imageUrl": "https://app-cdn.makeupar.com/cms/430a5763-f41c-4ea6-a9c8-7c64b9b3b942/1778665908784/file.jpg",
+            "difficulty": 1, "maintenance": "每3-4周修剪一次",
+            "hairTemplateId": "male_textured_crop" 
+        },
+        "textured_perm": {
+            "styleName": "男士短卷发", "reason": "增加头顶蓬松度，视觉拉长脸型", 
+            "imageUrl": "https://app-cdn.makeupar.com/cms/47633eff-2086-4791-b454-825aa6f9e160/1780481384535/file.jpg",
+            "difficulty": 2, "maintenance": "每4-6周修剪一次",
+            "hairTemplateId": "male_short_curly"
+        },
+        "natural_middle_part": {
+            "styleName": "逗号刘海", "reason": "柔和面部轮廓，韩式潮流", 
+            "imageUrl": "https://app-cdn.makeupar.com/cms/02a90e43-398a-4eda-b0bc-e9595d75430f/1778825209411/file.jpg",
+            "difficulty": 2, "maintenance": "每3-4周修剪一次",
+            "hairTemplateId": "male_textured_comma"
+        }
     }
     
-    hair_info = hair_mapping.get(hairstyle_id, {"styleName": "自然发型", "reason": "适合大部分脸型", "imageUrl": "https://example.com/natural.jpg", "difficulty": 1, "maintenance": "每3-4周修剪一次"})
+    # 提取推荐发型信息
+    hair_info = hair_mapping.get(hairstyle_id, hair_mapping["short_textured_side_part"])
     hair_recommendations = [hair_info]
     hair_tips = ["避免厚重刘海遮住额头", "顶部保留一定长度便于造型"]
+
+    # ==========================================
+    # 🟢 新增：给前端的“全部男士发型库”（8款）
+    # ==========================================
+    all_hair_options = [
+        {"id": "male_textured_crop", "name": "纹理寸头", "image": "https://app-cdn.makeupar.com/cms/430a5763-f41c-4ea6-a9c8-7c64b9b3b942/1778665908784/file.jpg"},
+        {"id": "male_short_curly", "name": "男士短卷发", "image": "https://app-cdn.makeupar.com/cms/47633eff-2086-4791-b454-825aa6f9e160/1780481384535/file.jpg"},
+        {"id": "male_gray_taper_fade", "name": "渐变推剪", "image": "https://app-cdn.makeupar.com/cms/02a90e43-398a-4eda-b0bc-e9595d75430f/1778825209411/file.jpg"},
+        # 以下 5 个如果你有真实图片链接可以替换进去，如果没有就留空
+        {"id": "male_textured_comma", "name": "逗号刘海", "image": ""}, 
+        {"id": "male_wavy_undercut", "name": "波浪底切", "image": ""},
+        {"id": "male_tousled_cut", "name": "凌乱碎发", "image": ""},
+        {"id": "male_afro", "name": "爆炸头", "image": ""},
+        {"id": "male_bald", "name": "光头", "image": ""}
+    ]
 
     translation = {
         "short_textured_side_part": "侧分短碎", "textured_perm": "纹理烫",
@@ -99,34 +133,33 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
     }
 
     # ==========================================
-    # 🟢 新增：YouCam API 模板 ID 映射（根据成员4提供的 template 列表）
+    # 🟢 修复点2：恢复胡须的 YouCam 真实模板 ID 映射
     # ==========================================
-    youcam_template_mapping = {
+    beard_youcam_mapping = {
         "clean_shave": "all_shaved",
-        "stubble_beard": "all_goatee",  # 兜底：YouCam没有直接的短茬胡，用山羊胡模板暂代
+        "stubble_beard": "all_goatee",  # 用山羊胡暂代短茬胡
         "goatee": "all_goatee",
-        "full_beard": "all_bandholz"    # 用 Bandholz（大胡子）模板代替络腮胡
+        "full_beard": "all_bandholz"
     }
+    real_beard_id = beard_youcam_mapping.get(beard_id, "all_goatee")
     
-    # 将内部 ID 替换为 YouCam 的真实 template_id
-    youcam_beard_id = youcam_template_mapping.get(beard_id, "all_shaved")
-    youcam_recommended_styles = [hairstyle_id, youcam_beard_id]
+    # 将胡须的真实 ID 放入数组第二个位置
+    final_recommended_styles = [hairstyle_id, real_beard_id]
 
-    # 6. 组装最终返回（包含所有新旧字段，完美兼容！）
     return {
         "faceShape": face_shape, 
         "beardRegions": [[100, 100], [150, 150]], 
         "densityLevel": result["densityLevel"],
         "heatmapData": [[100, 100, 50], [150, 150, 80]], 
-        "recommendedStyles": youcam_recommended_styles,  # 👈 注意这里换成了映射后的 ID
+        "recommendedStyles": final_recommended_styles, 
         "hairstyle_cn": translation.get(hairstyle_id, hairstyle_id),
         "beard_style_cn": translation.get(beard_id, beard_id),
         "reason": "根据您的脸型和发际线特征，这款组合能有效扬长避短。",
         "productTips": result["productTips"],
         "hairRecommendations": hair_recommendations,
-        "hairTips": hair_tips
+        "hairTips": hair_tips,
+        "all_hair_options": all_hair_options  # 👈 别漏了这行！
     }
-
 
 # ==========================================
 # 兼容层（契约要求）
