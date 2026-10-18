@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 import base64
 import httpx
+import io
 
 from analysis.face_shape import analyze_face_shape
 from analysis.beard_analysis import analyze_beard
@@ -76,8 +77,8 @@ async def beard_try_on(request: TryOnRequest):
         response = await client.post(
             "https://yce-api-01.makeupar.com/s2s/v2.0/task/beard-style",
             headers={"Authorization": f"Bearer {YOUCAM_API_KEY}"},
-            json={
-                "src_file_url": request.image,
+                     json={
+                "src_file_id": request.image, # 👈 这里改成 src_file_id
                 "template_id": request.templateId
             }
         )
@@ -99,6 +100,73 @@ async def beard_try_on(request: TryOnRequest):
             }
 
         return {"task_id": data["data"]["task_id"]}
+    
+class UploadRequest(BaseModel):
+    image: str  # 前端传来的 base64
+
+@app.post("/api/upload")
+async def upload_image(request: UploadRequest):
+    try:
+        # 1. 清理数据：去掉所有空格、换行符，并剥离前缀
+        image_b64 = request.image
+        if "," in image_b64:
+            image_b64 = image_b64.split(",")[-1]
+        
+        # 👇 加上这行，把 \n \r 和空格全部替换为空
+        image_b64 = image_b64.replace("\n", "").replace("\r", "").replace(" ", "")
+        
+        # 2. 解码
+        image_bytes = base64.b64decode(image_b64)
+
+        file_size = len(image_bytes)
+        # ... 后面保持不变 ...
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # 2. 第一步：申请上传许可（将元数据包在 files 数组中）
+            meta_res = await client.post(
+                "https://yce-api-01.makeupar.com/s2s/v2.0/file",
+                headers={
+                    "Authorization": f"Bearer {YOUCAM_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "files": [  # 👈 关键修改：用 files 数组包裹
+                        {
+                            "content_type": "image/jpeg",
+                            "file_name": "photo.jpg",
+                            "file_size": file_size
+                        }
+                    ]
+                }
+            )
+            meta_data = meta_res.json()
+            
+                        # 3. 解析返回的 file_id 和预签名上传 URL
+            # 注意：files 在 data 里面
+            if "data" not in meta_data or "files" not in meta_data["data"] or len(meta_data["data"]["files"]) == 0:
+                return {"error": "获取上传地址失败", "raw": meta_data}
+
+            file_info = meta_data["data"]["files"][0]
+            file_id = file_info["file_id"]
+            upload_request = file_info["requests"][0]  # 取出 PUT 请求的信息
+
+            # 4. 第二步：用 PUT 方法将文件二进制上传到预签名 URL
+            upload_res = await client.put(
+                upload_request["url"],
+                headers=upload_request.get("headers", {}),
+                content=image_bytes
+            )
+
+            if upload_res.status_code == 200:
+                return {
+                    "file_id": file_id, 
+                    "url": upload_request["url"]  # 这个 URL 可用于后续 AI 任务
+                }
+            else:
+                return {"error": "文件上传到S3失败", "status": upload_res.status_code}
+
+    except Exception as e:
+        return {"error": str(e), "type": type(e).__name__}
 
 @app.get("/api/task/{task_id}")
 async def get_task(task_id: str):
@@ -129,13 +197,16 @@ async def get_task(task_id: str):
             return {"status": "unknown", "raw": data}
 
         task_status = data["data"].get("task_status", "unknown")
-        
+            
         if task_status == "success":
-            # 正确提取 url 的路径：data -> results -> url
-            results = data["data"].get("results", {})
-            result_url = results.get("url", "")
-            return {"status": "success", "url": result_url}
-        
+                results = data["data"].get("results", {})
+                result_url = results.get("url", "")
+                return {"status": "success", "url": result_url}
+            
+            # 👇 改动在这里：如果失败，把完整的 data 返回给前端看
+        if task_status == "error":
+                return {"status": "error", "raw": data}
+
         return {"status": task_status}
 
     except Exception as e:
