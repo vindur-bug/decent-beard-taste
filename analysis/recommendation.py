@@ -127,9 +127,30 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
     ]
 
     translation = {
-        "short_textured_side_part": "侧分短碎", "textured_perm": "纹理烫",
-        "natural_middle_part": "自然中分", "stubble_beard": "短茬胡",
-        "goatee": "山羊胡", "full_beard": "络腮胡", "clean_shave": "干净剃须"
+        # 发型翻译
+        "short_textured_side_part": "侧分短碎", 
+        "textured_perm": "纹理烫",
+        "natural_middle_part": "自然中分", 
+        "taper_fade": "渐变推剪",
+        "wavy_undercut": "波浪底切",
+        "tousled_cut": "凌乱碎发",
+        "afro": "爆炸头",
+        "bald": "光头",
+        
+        # 胡须翻译（把 YouCam 的真实 ID 补全）
+        "all_shaved": "干净剃须",
+        "all_goatee": "山羊胡",
+        "all_mutton_chops": "羊排胡",
+        "all_horse_shoe": "马蹄胡",
+        "all_ducktail": "鸭尾胡",
+        "all_french_fork": "法式胡",
+        "all_bandholz": "络腮胡",
+        
+        # 内部旧标签兜底
+        "stubble_beard": "短茬胡", 
+        "goatee": "山羊胡", 
+        "full_beard": "络腮胡", 
+        "clean_shave": "干净剃须"
     }
 
     # ==========================================
