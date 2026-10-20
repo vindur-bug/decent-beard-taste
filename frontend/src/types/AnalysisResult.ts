@@ -47,6 +47,7 @@ export type RecommendationImage =
 
 // API 返回的一项发型建议
 export interface HairRecommendation {
+  hairTemplateId?: string;
   styleName?: string;
   reason?: string;
   imageUrl?: RecommendationImage | null;

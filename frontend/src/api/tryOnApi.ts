@@ -23,7 +23,7 @@ function waitForNextPoll(signal: AbortSignal): Promise<void> {
   });
 }
 
-export async function generateTryOn(image: string, templateId: string, signal: AbortSignal): Promise<string> {
+export async function uploadTryOnImage(image: string, signal: AbortSignal): Promise<string> {
   const upload = await readResponse(await fetch(`${API_BASE_URL}/api/upload`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -31,11 +31,14 @@ export async function generateTryOn(image: string, templateId: string, signal: A
     signal,
   }));
   if (typeof upload.file_id !== 'string' || !upload.file_id) throw new Error('照片上传后没有收到文件编号。');
+  return upload.file_id;
+}
 
-  const task = await readResponse(await fetch(`${API_BASE_URL}/api/beard-try-on`, {
+export async function generateTryOn(fileId: string, templateId: string, kind: 'beard' | 'hair', signal: AbortSignal): Promise<string> {
+  const task = await readResponse(await fetch(`${API_BASE_URL}/api/${kind}-try-on`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: upload.file_id, templateId }),
+    body: JSON.stringify({ image: fileId, templateId }),
     signal,
   }));
   if (typeof task.task_id !== 'string' || !task.task_id) throw new Error('没有收到试戴任务编号。');

@@ -8,7 +8,6 @@ import {
   User,
   Scissors,
   Droplets,
-  ClipboardList,
   Brush,
   Image as ImageIcon,
 } from 'lucide-react';
@@ -26,7 +25,8 @@ import { displayApiText, resolveImageSource } from '@/utils/apiContent';
 import { isMockMode } from '@/api/analyzeApi';
 import { BeardOverlay } from '@/components/BeardOverlay';
 import { MascotMark } from '@/components/MascotMark';
-import { generateTryOn } from '@/api/tryOnApi';
+import { generateTryOn, uploadTryOnImage } from '@/api/tryOnApi';
+import { SharePoster } from '@/components/SharePoster';
 
 interface ResultPageProps {
   result: AnalysisResult;
@@ -36,16 +36,24 @@ interface ResultPageProps {
 }
 
 export function ResultPage({ result, previewUrl, onRestart, onReselect }: ResultPageProps) {
-  const [tryOnUrl, setTryOnUrl] = useState('');
+  const [beardUrl, setBeardUrl] = useState('');
+  const [hairUrl, setHairUrl] = useState('');
+  const [selectedTryOn, setSelectedTryOn] = useState<'beard' | 'hair' | null>(null);
   const [tryOnLoading, setTryOnLoading] = useState(false);
   const [tryOnError, setTryOnError] = useState('');
+  const [showPoster, setShowPoster] = useState(false);
   const tryOnController = useRef<AbortController | null>(null);
   useEffect(() => () => { tryOnController.current?.abort(); }, []);
 
   async function handleTryOn() {
-    const templateId = result.recommendedStyles?.[1];
-    if (typeof templateId !== 'string' || !templateId) {
-      setTryOnError('没有收到推荐胡须造型，暂时无法试戴。');
+    const beardTemplate = result.recommendedStyles?.[1];
+    const hairTemplate = result.hairRecommendations?.[0]?.hairTemplateId;
+    const missing = [!beardUrl && !beardTemplate ? '胡须' : '', !hairUrl && !hairTemplate ? '发型' : ''].filter(Boolean);
+    const tasks: Array<{ kind: 'beard' | 'hair'; templateId: string }> = [];
+    if (!beardUrl && beardTemplate) tasks.push({ kind: 'beard', templateId: beardTemplate });
+    if (!hairUrl && hairTemplate) tasks.push({ kind: 'hair', templateId: hairTemplate });
+    if (tasks.length === 0) {
+      setTryOnError(missing.length ? `没有收到${missing.join('和')}试戴所需的造型编号。` : '两张试戴图片已经生成。');
       return;
     }
     const controller = new AbortController();
@@ -53,7 +61,23 @@ export function ResultPage({ result, previewUrl, onRestart, onReselect }: Result
     setTryOnLoading(true);
     setTryOnError('');
     try {
-      setTryOnUrl(await generateTryOn(previewUrl, templateId, controller.signal));
+      const fileId = await uploadTryOnImage(previewUrl, controller.signal);
+      const results = await Promise.allSettled(tasks.map(async ({ kind, templateId }) => {
+        const url = await generateTryOn(fileId, templateId, kind, controller.signal);
+        if (!controller.signal.aborted) {
+          if (kind === 'beard') setBeardUrl(url);
+          else setHairUrl(url);
+          setSelectedTryOn((current) => current ?? kind);
+        }
+      }));
+      if (!controller.signal.aborted) {
+        const failures = results.flatMap((item, index) => item.status === 'rejected' ? [tasks[index].kind === 'beard' ? '胡须' : '发型'] : []);
+        const messages = [
+          missing.length ? `没有收到${missing.join('和')}试戴所需的造型编号` : '',
+          failures.length ? `${failures.join('和')}试戴生成失败，请重试` : '',
+        ].filter(Boolean);
+        setTryOnError(messages.join('；'));
+      }
     } catch (error) {
       if (!controller.signal.aborted) setTryOnError(error instanceof Error ? error.message : '试戴生成失败，请重试。');
     } finally {
@@ -61,6 +85,7 @@ export function ResultPage({ result, previewUrl, onRestart, onReselect }: Result
       if (tryOnController.current === controller) tryOnController.current = null;
     }
   }
+  const tryOnUrl = selectedTryOn === 'beard' ? beardUrl : selectedTryOn === 'hair' ? hairUrl : '';
   // 提取发际线值（通过适配文件统一获取字段名）
   const hairlineValue = useMemo(() => extractHairlineLevel(result as Record<string, unknown>), [result]);
   const hasHairline = hairlineValue !== undefined && hairlineValue in hairlineLevelLabels;
@@ -82,11 +107,6 @@ export function ResultPage({ result, previewUrl, onRestart, onReselect }: Result
   const hairTips = (result.hairTips ?? []).map(displayApiText).filter(Boolean);
   const productTips = (result.productTips ?? []).map(displayApiText).filter(Boolean);
 
-  // 理发店沟通卡文案
-  // 【演示内容】当前 API 契约没有此字段，后续需要团队确认真实数据来源
-  const barberCardText =
-    '脸型偏椭圆，建议两侧保留自然蓬松感，顶部适度纹理化。胡须区域目前密度较低，建议保留短茬胡造型，修剪时注意下颌线条干净利落，颈部胡须需清理干净。鬓角与胡须过渡保持自然衔接。';
-
   const hasHeatmap = result.heatmapData && result.heatmapData.length > 0;
 
   return (
@@ -106,21 +126,29 @@ export function ResultPage({ result, previewUrl, onRestart, onReselect }: Result
           {/* 顶部照片区域 + 演示标记 */}
           <div>
           <div className="relative overflow-hidden rounded-3xl bg-stone-100 shadow-sm" style={{ aspectRatio: '1 / 1' }}>
-            <img src={tryOnUrl || previewUrl} alt={tryOnUrl ? '胡须试戴效果' : '你的照片'} className="h-full w-full object-contain" onError={() => { if (tryOnUrl) { setTryOnUrl(''); setTryOnError('试戴图片加载失败，请重试。'); } }} />
+            <img src={tryOnUrl || previewUrl} alt={tryOnUrl ? (selectedTryOn === 'hair' ? '发型试戴效果' : '胡须试戴效果') : '你的照片'} className="h-full w-full object-contain" onError={() => { if (tryOnUrl) { if (selectedTryOn === 'hair') { setHairUrl(''); setSelectedTryOn(beardUrl ? 'beard' : null); } else { setBeardUrl(''); setSelectedTryOn(hairUrl ? 'hair' : null); } setTryOnError('试戴图片加载失败，请重试。'); } }} />
             {!tryOnUrl && <BeardOverlay
               imageUrl={previewUrl}
               beardRegions={result.beardRegions}
               heatmapData={result.heatmapData}
             />}
             <div className="absolute left-3 top-3 rounded-full bg-amber-900/90 px-3 py-1 text-xs font-medium text-amber-50 backdrop-blur-sm">
-              {tryOnUrl ? '胡须试戴效果' : isMockMode() ? '演示示例数据' : 'AI 分析结果'}
+              {tryOnUrl ? (selectedTryOn === 'hair' ? '发型试戴效果' : '胡须试戴效果') : isMockMode() ? '演示示例数据' : 'AI 分析结果'}
             </div>
           </div>
-          <button type="button" onClick={handleTryOn} disabled={tryOnLoading} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-wait disabled:opacity-60">
+          {(beardUrl || hairUrl) && <div className="mt-3 grid grid-cols-2 gap-2" aria-label="切换试戴效果">
+            <button type="button" disabled={!beardUrl} aria-pressed={selectedTryOn === 'beard'} onClick={() => setSelectedTryOn('beard')} className={`rounded-2xl px-4 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${selectedTryOn === 'beard' ? 'bg-amber-900 text-white' : 'bg-white text-stone-600 shadow-sm'}`}>胡须试戴{!beardUrl && tryOnLoading ? '（生成中）' : ''}</button>
+            <button type="button" disabled={!hairUrl} aria-pressed={selectedTryOn === 'hair'} onClick={() => setSelectedTryOn('hair')} className={`rounded-2xl px-4 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${selectedTryOn === 'hair' ? 'bg-amber-900 text-white' : 'bg-white text-stone-600 shadow-sm'}`}>发型试戴{!hairUrl && tryOnLoading ? '（生成中）' : ''}</button>
+          </div>}
+          {(!beardUrl || !hairUrl) && <button type="button" onClick={handleTryOn} disabled={tryOnLoading} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:cursor-wait disabled:opacity-60">
             <Sparkles className={`h-4 w-4 ${tryOnLoading ? 'animate-pulse' : ''}`} />
-            {tryOnLoading ? '正在生成试戴效果，请稍候…' : tryOnUrl ? '重新生成试戴效果' : '试戴推荐胡须'}
-          </button>
+            {tryOnLoading ? '正在生成试戴效果，请稍候…' : (beardUrl || hairUrl) ? '重试未生成的效果' : '生成胡须和发型试戴效果'}
+          </button>}
           {tryOnError && <p role="alert" className="mt-2 text-center text-sm text-red-600">{tryOnError}</p>}
+          <button type="button" onClick={() => setShowPoster(true)} disabled={!beardUrl && !hairUrl} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-900/20 bg-white px-4 py-3 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40">
+            <ImageIcon className="h-4 w-4" />生成分享海报
+          </button>
+          {!beardUrl && !hairUrl && <p className="mt-2 text-center text-xs text-stone-500">生成至少一种试戴效果后，就可以制作海报。</p>}
           </div>
 
           <aside className="relative flex min-h-[360px] flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-amber-900/5 bg-[#fffbed] px-6 py-5 text-center sm:min-h-[420px] lg:min-h-[500px]">
@@ -253,15 +281,6 @@ export function ResultPage({ result, previewUrl, onRestart, onReselect }: Result
           </ResultSection>
         )}
 
-        {/* 区块6：理发店沟通卡 */}
-        <ResultSection icon={<ClipboardList className="h-5 w-5 text-amber-800" />} title="理发店沟通卡">
-          {/* 【演示内容】以下文案为 Mock 内容，后续需要团队确认真实数据来源 */}
-          <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-4">
-            <p className="mb-2 text-xs text-stone-400">可给理发师查看的修剪说明</p>
-            <p className="text-sm leading-relaxed text-stone-600">{barberCardText}</p>
-          </div>
-        </ResultSection>
-
         {/* 区块7：胡须热力图 */}
         <ResultSection icon={<ImageIcon className="h-5 w-5 text-amber-800" />} title="胡须热力图">
           {hasHeatmap ? (
@@ -280,6 +299,7 @@ export function ResultPage({ result, previewUrl, onRestart, onReselect }: Result
 
         </div>
       </div>
+      {showPoster && <SharePoster result={result} previewUrl={previewUrl} beardUrl={beardUrl} hairUrl={hairUrl} onClose={() => setShowPoster(false)} />}
     </div>
   );
 }
