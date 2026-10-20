@@ -6,7 +6,7 @@ import os
 import base64
 import httpx
 import io
-
+from fastapi import HTTPException
 from analysis.face_shape import analyze_face_shape
 from analysis.beard_analysis import analyze_beard
 from analysis.recommendation import recommend_styles
@@ -243,3 +243,25 @@ async def hair_try_on(request: HairTryOnRequest):
             return {"error": "YouCam 发型生成任务提交失败", "raw": data}
             
         return {"task_id": data["data"]["task_id"]}
+
+        from fastapi.responses import StreamingResponse
+
+@app.get("/api/proxy-image")
+async def proxy_image(url: str):
+    """代理远程图片，解决Canvas跨域污染问题"""
+    # 限制只代理 YouCam 相关域名的图片，防止被滥用
+    if not url.startswith("https://yce-us.s3"):
+        raise HTTPException(status_code=403, detail="Unsupported image host")
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url)
+            response.raise_for_status()
+            # 返回图片流，并允许跨域读取
+            return StreamingResponse(
+                response.iter_bytes(), 
+                media_type=response.headers.get("content-type", "image/jpeg"),
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        except httpx.HTTPStatusError:
+            raise HTTPException(status_code=404, detail="Image not found")
