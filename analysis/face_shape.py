@@ -278,10 +278,40 @@ def _distance(points: list[list[float]], first: int, second: int) -> float:
     return math.hypot(x2 - x1, y2 - y1)
 
 
-def _estimate_face_shape(points: list[list[float]]) -> str:
-    """Apply a small, explainable ratio heuristic using face-oval landmarks."""
-    # Approximate landmarks: forehead/temple width, cheek width, jaw width,
-    # and vertical face length. The model returns normalized x/y coordinates.
+def _angle_at_point(
+    points: list[list[float]], first: int, vertex: int, last: int
+) -> float:
+    """Return the angle at vertex formed by three landmark indices."""
+    ax = points[first][0] - points[vertex][0]
+    ay = points[first][1] - points[vertex][1]
+    bx = points[last][0] - points[vertex][0]
+    by = points[last][1] - points[vertex][1]
+    magnitude_a = math.hypot(ax, ay)
+    magnitude_b = math.hypot(bx, by)
+    if magnitude_a <= 1e-9 or magnitude_b <= 1e-9:
+        return 180.0
+    cosine = (ax * bx + ay * by) / (magnitude_a * magnitude_b)
+    return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
+
+
+def _jaw_corner_angles(
+    points: list[list[float]], image_size: tuple[int, int]
+) -> tuple[float, float]:
+    """Measure both jaw-corner angles from the five agreed face landmarks."""
+    width, height = image_size
+    pixel_points = [[x * width, y * height] for x, y in points]
+    return (
+        _angle_at_point(pixel_points, 234, 172, 152),
+        _angle_at_point(pixel_points, 454, 397, 152),
+    )
+
+
+def _estimate_face_shape(
+    points: list[list[float]], image_size: tuple[int, int]
+) -> str:
+    """Apply the agreed starter ratio heuristic using face-oval landmarks."""
+    # Approximate forehead/temple width, cheek width, jaw width, and vertical
+    # face length from MediaPipe's normalized x/y landmarks.
     face_length = _distance(points, 10, 152)
     cheek_width = _distance(points, 234, 454)
     jaw_width = _distance(points, 172, 397)
@@ -293,14 +323,24 @@ def _estimate_face_shape(points: list[list[float]]) -> str:
     length_to_width = face_length / cheek_width
     jaw_to_cheek = jaw_width / cheek_width
     forehead_to_cheek = forehead_width / cheek_width
+    left_jaw_angle, right_jaw_angle = _jaw_corner_angles(points, image_size)
+    smaller_jaw_angle = min(
+        round(left_jaw_angle, 1), round(right_jaw_angle, 1)
+    )
 
-    # These are starter thresholds for a hackathon prototype, not population-
-    # validated boundaries. The output remains one of the agreed API labels.
-    if forehead_to_cheek - jaw_to_cheek >= 0.16 and jaw_to_cheek < 0.82:
-        return "heart"
-    if length_to_width <= 1.28 and jaw_to_cheek >= 0.88:
+    # Starter thresholds for a hackathon prototype, not population-validated
+    # boundaries. Either a broad jaw or a clear turn on either side can qualify
+    # as square; oval is the longer-face branch of the round family.
+    if jaw_to_cheek >= 0.85 or (
+        smaller_jaw_angle <= 134.0
+    ):
         return "square"
-    if length_to_width <= 1.28 and jaw_to_cheek < 0.88:
+    if jaw_to_cheek < 0.85 and (
+        smaller_jaw_angle > 140.0
+        or forehead_to_cheek - jaw_to_cheek >= 0.12
+    ):
+        return "heart"
+    if length_to_width <= 1.22 and jaw_to_cheek < 0.85:
         return "round"
     return "oval"
 
@@ -322,9 +362,11 @@ def _detect_all_landmarks(rgb: np.ndarray) -> list[list[float]]:
     return points
 
 
-def _landmark_result(points: list[list[float]]) -> dict[str, Any]:
+def _landmark_result(
+    points: list[list[float]], image_size: tuple[int, int]
+) -> dict[str, Any]:
     return {
-        "faceShape": _estimate_face_shape(points),
+        "faceShape": _estimate_face_shape(points, image_size),
         "landmarks": {
             str(index): points[index] for index in _OUTPUT_LANDMARK_INDICES
         },
@@ -352,7 +394,9 @@ def analyze_face_shape_only(
         RuntimeError: The MediaPipe model could not be loaded or run.
     """
     rgb = _to_rgb_array(image, color_order=color_order)
-    return _landmark_result(_detect_all_landmarks(rgb))
+    return _landmark_result(
+        _detect_all_landmarks(rgb), (rgb.shape[1], rgb.shape[0])
+    )
 
 
 def _get_parsing_session(model_path: str | os.PathLike[str] | None = None) -> Any:
@@ -576,7 +620,7 @@ def analyze_face_shape(
     """
     rgb = _to_rgb_array(image, color_order=color_order)
     landmarks = _detect_all_landmarks(rgb)
-    result = _landmark_result(landmarks)
+    result = _landmark_result(landmarks, (rgb.shape[1], rgb.shape[0]))
     details = _hairline_details_from_rgb(rgb, landmarks, hairline_model_path)
     result["hairline"] = details["label"]
     return result
@@ -609,8 +653,19 @@ def analyze_face_with_debug(
     """Return the agreed result and pixel measurements for the local preview."""
     rgb = _to_rgb_array(image, color_order=color_order)
     landmarks = _detect_all_landmarks(rgb)
-    result = _landmark_result(landmarks)
+    result = _landmark_result(landmarks, (rgb.shape[1], rgb.shape[0]))
     details = _hairline_details_from_rgb(rgb, landmarks, hairline_model_path)
+    left_angle, right_angle = _jaw_corner_angles(
+        landmarks, (rgb.shape[1], rgb.shape[0])
+    )
+    details["jaw_angles_deg"] = [round(left_angle, 1), round(right_angle, 1)]
+    details["jaw_angle_landmarks"] = {
+        str(index): [
+            round(landmarks[index][0] * rgb.shape[1], 1),
+            round(landmarks[index][1] * rgb.shape[0], 1),
+        ]
+        for index in (234, 172, 152, 454, 397)
+    }
     result["hairline"] = details["label"]
     return result, details
 
