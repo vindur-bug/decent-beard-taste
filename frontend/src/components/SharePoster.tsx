@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
+import { API_BASE_URL } from '@/api/analyzeApi';
 import brandImage from '@/assets/decent-beard-taste.png';
 import type { AnalysisResult } from '@/types/AnalysisResult';
 import { beardStyleLabels, densityLevelLabels, faceShapeLabels, hairlineLevelLabels, hairstyleLabels } from '@/config/labels';
@@ -17,10 +18,15 @@ interface SharePosterProps {
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    if (/^https?:/i.test(src)) image.crossOrigin = 'anonymous';
+    const isRemoteImage = /^https?:\/\//i.test(src);
+    // 海报中的远程图片通过后端代理加载，避免污染 Canvas，导致导出失败。
+    const imageSrc = isRemoteImage
+      ? `${API_BASE_URL.replace(/\/+$/, '')}/api/proxy-image?url=${encodeURIComponent(src)}`
+      : src;
+    image.crossOrigin = 'anonymous';
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('图片无法用于海报导出，可能需要图片服务允许网页读取。请联系成员 4。'));
-    image.src = src;
+    image.onerror = () => reject(new Error('海报图片加载失败，请稍后重试。'));
+    image.src = imageSrc;
   });
 }
 
