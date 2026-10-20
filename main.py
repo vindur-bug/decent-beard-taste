@@ -6,7 +6,6 @@ import os
 import base64
 import httpx
 import io
-from fastapi import HTTPException
 from analysis.face_shape import analyze_face_shape
 from analysis.beard_analysis import analyze_beard
 from analysis.recommendation import recommend_styles
@@ -246,22 +245,48 @@ async def hair_try_on(request: HairTryOnRequest):
 
         from fastapi.responses import StreamingResponse
 
+from fastapi import Request, HTTPException
+from fastapi.responses import StreamingResponse
+import urllib.parse
+import traceback
+
 @app.get("/api/proxy-image")
 async def proxy_image(url: str):
-    """代理远程图片，解决Canvas跨域污染问题"""
-    # 限制只代理 YouCam 相关域名的图片，防止被滥用
-    if not url.startswith("https://yce-us.s3"):
-        raise HTTPException(status_code=403, detail="Unsupported image host")
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url)
-            response.raise_for_status()
-            # 返回图片流，并允许跨域读取
+    try:
+        # 1. 修复 FastAPI 自动将 '+' 解码为空格的问题 (S3 签名致命坑)
+        safe_url = url.replace(" ", "+")
+        
+        print(f"=== 代理请求开始 ===")
+        print(f"原始URL: {url}")
+        print(f"修复后URL: {safe_url}")
+        
+        if not safe_url.startswith("https://yce-us.s3"):
+            raise HTTPException(status_code=403, detail="Unsupported image host")
+
+        # 2. 下载图片（增加超时限制防止卡死）
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(safe_url)
+            
+            # 如果 S3 报错（比如 403 过期），打印出详细的错误内容
+            if response.status_code != 200:
+                print(f"❌ S3 下载失败，状态码: {response.status_code}")
+                print(f"S3 返回内容: {response.text}")
+                raise HTTPException(status_code=404, detail=f"S3 error: {response.status_code}")
+            
+            # 3. 返回图片流，允许前端跨域读取
             return StreamingResponse(
-                response.iter_bytes(), 
+                iter([response.content]), 
                 media_type=response.headers.get("content-type", "image/jpeg"),
-                headers={"Access-Control-Allow-Origin": "*"}
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "public, max-age=3600"
+                }
             )
-        except httpx.HTTPStatusError:
-            raise HTTPException(status_code=404, detail="Image not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        # 4. 捕获所有未知异常，并在终端打印完整的 Traceback
+        print("❌ 代理接口发生未捕获异常：")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
