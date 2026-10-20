@@ -98,11 +98,13 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
         final_density = ai_data.get("densityLevel", final_density)
 
     except Exception as e:
-        print(f"⚠️ AI 推理失败，已降级为默认方案: {e}")
-        # 👇 强制覆盖成山羊胡！
+        print(f"⚠️ AI 推理失败: {e}")
+        
+        # 👇 关键改动：把真实的报错原因，直接写进返回的推荐理由里！
+        final_reason = f"【大模型报错：{str(e)}】"
+        
         final_hairstyle_id = "natural_middle_part"
-        final_beard_id = "goatee" 
-        final_reason = "根据您的面部轮廓，选择了最百搭的清爽造型。"
+        final_beard_id = "goatee"
         final_tips = ["保持面部清洁", "日常基础保湿"]
 
     # 5. 组装最终 JSON
