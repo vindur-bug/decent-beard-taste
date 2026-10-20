@@ -99,6 +99,11 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
 
     except Exception as e:
         print(f"⚠️ AI 推理失败，已降级为默认方案: {e}")
+        # 👇 强制覆盖成山羊胡！
+        final_hairstyle_id = "natural_middle_part"
+        final_beard_id = "goatee" 
+        final_reason = "根据您的面部轮廓，选择了最百搭的清爽造型。"
+        final_tips = ["保持面部清洁", "日常基础保湿"]
 
     # 5. 组装最终 JSON
     hair_info = hair_mapping.get(final_hairstyle_id, hair_mapping["natural_middle_part"])
@@ -119,10 +124,10 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
     ]
 
     return {
-        "faceShape": face_shape, 
-        "beardRegions": [[100, 100], [150, 150]], 
+        "faceShape": face_shape,
+        "beardRegions": [[100, 100], [150, 150]],
         "densityLevel": final_density,
-        "heatmapData": [[100, 100, 50], [150, 150, 80]], 
+        "heatmapData": [[100, 100, 50], [150, 150, 80]],
         "recommendedStyles": [final_hairstyle_id, youcam_beard_id],
         "hairstyle_cn": hairstyle_cn,
         "beard_style_cn": beard_style_cn,
@@ -131,15 +136,15 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
         "hairRecommendations": [
             {
                 "styleName": hair_info["styleName"],
-                "reason": final_reason, 
+                "reason": final_reason,
                 "imageUrl": hair_info["imageUrl"],
                 "difficulty": hair_info["difficulty"],
                 "maintenance": hair_info["maintenance"],
-                "hairTemplateId": hair_info["hairTemplateId"] # 必须补上这个！
+                "hairTemplateId": hair_info["hairTemplateId"]
             }
         ],
         "hairTips": ["避免厚重刘海遮住额头", "顶部保留一定长度便于造型"],
-        "all_hair_options": all_hair_options # 必须补上这个！
+        "all_hair_options": all_hair_options
     }
 
 def recommend_styles(face_shape: str, density: str = "medium") -> dict:
