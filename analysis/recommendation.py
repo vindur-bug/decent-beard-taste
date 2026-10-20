@@ -135,14 +135,35 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
     # ==========================================
     # 🟢 修复点2：恢复胡须的 YouCam 真实模板 ID 映射
     # ==========================================
+        # ==========================================
+    # 🟢 修复：让胡须根据脸型产生差异化，而不是死磕山羊胡
+    # ==========================================
     beard_youcam_mapping = {
         "clean_shave": "all_shaved",
-        "stubble_beard": "all_goatee",  # 用山羊胡暂代短茬胡
+        "stubble_beard": "all_mutton_chops",  # 羊排胡更像短茬
         "goatee": "all_goatee",
         "full_beard": "all_bandholz"
     }
-    real_beard_id = beard_youcam_mapping.get(beard_id, "all_goatee")
     
+    # 默认映射
+    real_beard_id = beard_youcam_mapping.get(beard_id, "all_goatee")
+
+    # 🔥 基于脸型强制覆盖胡须推荐（增加多样性）
+    if face_shape == "round":
+        real_beard_id = "all_goatee"       # 圆脸推荐山羊胡，拉长脸型
+    elif face_shape == "square":
+        real_beard_id = "all_mutton_chops" # 方脸推荐羊排胡，柔化下颌
+    elif face_shape == "heart":
+        real_beard_id = "all_horse_shoe"   # 心形脸推荐马蹄胡，平衡比例
+    elif face_shape == "long":
+        real_beard_id = "all_ducktail"     # 长脸推荐鸭尾胡，增加宽度
+    elif face_shape == "oval":
+        real_beard_id = "all_french_fork"  # 椭圆脸推荐法式胡，百搭
+
+    # 如果系统分析出用户没胡子（clean_shave），就尊重结果不覆盖
+    if beard_id == "clean_shave":
+        real_beard_id = "all_shaved"
+
     # 将胡须的真实 ID 放入数组第二个位置
     final_recommended_styles = [hairstyle_id, real_beard_id]
 
