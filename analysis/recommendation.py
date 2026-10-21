@@ -1,7 +1,8 @@
 import os
 import json
-import dashscope
-from dashscope import Generation
+import os
+import json
+from openai import OpenAI
 
 # 从环境变量读取密钥，绝对不能写死在这里！
 dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
@@ -57,58 +58,47 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
     final_density = "medium"
 
     # 4. 大模型推理决策
+
+           # 4. 大模型推理决策
+    
     try:
-        prompt = f"""
-        你是一个顶级的男士发型与胡须造型专家。请根据用户的客观数据，推理出最适合他的发型和胡须。
-        
-        【用户数据】
-        - 脸型 (face_shape): {face_shape}
-        - 发际线 (hairline): {hairline}
-        - 打理意愿 (time_pref): {time_pref}
-        
-        【你的决策范围限制】
-        发型 ID 只能从以下选择:short_textured_side_part, textured_perm, natural_middle_part
-        胡须 ID 只能从以下选择:clean_shave, stubble_beard, goatee, full_beard
-        
-        【要求】
-        请严格返回如下 JSON 格式（不要输出 markdown 标记）：
-        {{
-            "hairstyle_id": "推导出的发型ID",
-            "beard_id": "推导出的胡须ID",
-            "densityLevel": "sparse或medium或dense",
-            "reason": "用40个字以内,像理发师一样专业地解释。",
-            "productTips": ["建议1", "建议2"]
-        }}
+            # 获取你的专属 Key (如果环境变量没读到，就用后面的默认值)
+            api_key = os.getenv("DASHSCOPE_API_KEY", "sk-ws-H.PXIPELY.nUd8.MEYCIQCVU8ImgHN9Pj-o8BgqZpwc-b2cE-Sj53vcFqg1ANhH1QIhANA7GD-ow1CkmkbXnnWyAjL4wevbsm7fTx-i_LaD14qW")
+            
+            # 专属的 Base URL（千万不要加外层的双引号！）
+            base_url = "https://ws-j9mig145jp2pnlw7-cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+
+            # 初始化 OpenAI 客户端，指向你的专属地址
+            client = OpenAI(
+                api_key=api_key,
+                base_url=base_url
+            )
+
+prompt = f"""
+        你是一个顶级的男士发型与胡须造型专家...
+        （这里的 Prompt 保持你原来的不变）
         """
-        
-        response = Generation.call(
-            model="qwen-plus",
+
+        # 发送请求
+response = client.chat.completions.create(
+            model="qwen-plus", # 如果报错说找不到模型，请去阿里云控制台看看你部署的模型具体叫什么名字（如 qwen2.5-72b-instruct）
             messages=[{"role": "user", "content": prompt}],
-            result_format='message',
-            response_format={'type': 'json_object'}
+            response_format={"type": "json_object"}
         )
         
-        ai_data = json.loads(response.output.choices[0].message.content)
+        # 解析结果
+    ai_content = response.choices[0].message.content
+    ai_data = json.loads(ai_content)
         
-        if ai_data.get("hairstyle_id") in hair_mapping:
+        # 后面的校验代码保持不变...
+    if ai_data.get("hairstyle_id") in hair_mapping:
             final_hairstyle_id = ai_data["hairstyle_id"]
-        if ai_data.get("beard_id") in translation:
-            final_beard_id = ai_data["beard_id"]
-            
-        final_reason = ai_data.get("reason", final_reason)
-        final_tips = ai_data.get("productTips", final_tips)
-        final_density = ai_data.get("densityLevel", final_density)
+        # ...
 
     except Exception as e:
-        print(f"⚠️ AI 推理失败: {e}")
-        
-        # 👇 关键改动：把真实的报错原因，直接写进返回的推荐理由里！
-        final_reason = f"【大模型报错：{str(e)}】"
-        
-        final_hairstyle_id = "natural_middle_part"
-        final_beard_id = "goatee"
-        final_tips = ["保持面部清洁", "日常基础保湿"]
-
+    
+    print(f"⚠️ AI 推理失败，已降级为默认方案: {e}")
+        # 你的兜底代码...
     # 5. 组装最终 JSON
     hair_info = hair_mapping.get(final_hairstyle_id, hair_mapping["natural_middle_part"])
     hairstyle_cn = translation.get(final_hairstyle_id, "自然发型")
@@ -151,5 +141,5 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
         "all_hair_options": all_hair_options
     }
 
-def recommend_styles(face_shape: str, density: str = "medium") -> dict:
-    return generate_recommendation(face_shape, "normal", density)
+    def recommend_styles(face_shape: str, density: str = "medium") -> dict:
+      return generate_recommendation(face_shape, "normal", density)
