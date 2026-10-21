@@ -61,42 +61,78 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
 
            # 4. 大模型推理决策
     
+        # ==========================================
+    # 4. 大模型推理决策（核心逻辑）
+    # ==========================================
     try:
-            # 获取你的专属 Key (如果环境变量没读到，就用后面的默认值)
-            api_key = os.getenv("DASHSCOPE_API_KEY", "sk-ws-H.PXIPELY.nUd8.MEYCIQCVU8ImgHN9Pj-o8BgqZpwc-b2cE-Sj53vcFqg1ANhH1QIhANA7GD-ow1CkmkbXnnWyAjL4wevbsm7fTx-i_LaD14qW")
-            
-            # 专属的 Base URL（千万不要加外层的双引号！）
-            base_url = "https://ws-j9mig145jp2pnlw7-cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+        # 获取你的专属 Key (如果环境变量没读到，就用后面的默认值)
+        api_key = os.getenv("DASHSCOPE_API_KEY", "sk-ws-H.PEIHMMR...（这里填你真实的Key）")
+        
+        # 专属的 Base URL
+        base_url = "https://ws-j9mig145jp2pnlw7-cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 
-            # 初始化 OpenAI 客户端，指向你的专属地址
-            client = OpenAI(
-                api_key=api_key,
-                base_url=base_url
-            )
+        # 初始化 OpenAI 客户端
+        client = OpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
 
-prompt = f"""
-        你是一个顶级的男士发型与胡须造型专家...
-        （这里的 Prompt 保持你原来的不变）
+        prompt = f"""
+        你是一个顶级的男士发型与胡须造型专家。请根据用户的客观数据，推理出最适合他的发型和胡须。
+        
+        【用户数据】
+        - 脸型 (face_shape): {face_shape}
+        - 发际线 (hairline): {hairline}
+        - 打理意愿 (time_pref): {time_pref}
+        
+        【你的决策范围限制】
+        发型 ID 只能从以下选择：
+        - short_textured_side_part
+        - textured_perm
+        - natural_middle_part
+        
+        胡须 ID 只能从以下选择：
+        - clean_shave
+        - stubble_beard
+        - goatee
+        - full_beard
+        
+        【要求】
+        请严格返回如下 JSON 格式（不要输出 markdown 标记）：
+        {{
+            "hairstyle_id": "你推导出的发型ID",
+            "beard_id": "你推导出的胡须ID",
+            "densityLevel": "sparse或medium或dense",
+            "reason": "用40个字以内，像理发师一样专业地解释为什么这个组合适合他的脸型和发际线。",
+            "productTips": ["建议1", "建议2"]
+        }}
         """
-
-        # 发送请求
-response = client.chat.completions.create(
-            model="qwen-plus", # 如果报错说找不到模型，请去阿里云控制台看看你部署的模型具体叫什么名字（如 qwen2.5-72b-instruct）
+        
+        response = client.chat.completions.create(
+            model="qwen-plus", 
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         
-        # 解析结果
-    ai_content = response.choices[0].message.content
-    ai_data = json.loads(ai_content)
+        # 解析 AI 的决定
+        ai_content = response.choices[0].message.content
+        ai_data = json.loads(ai_content)
         
-        # 后面的校验代码保持不变...
-    if ai_data.get("hairstyle_id") in hair_mapping:
+        # 校验 AI 给的 ID 是否合法（防止它自己瞎编）
+        if ai_data.get("hairstyle_id") in hair_mapping:
             final_hairstyle_id = ai_data["hairstyle_id"]
-        # ...
+        if ai_data.get("beard_id") in translation:
+            final_beard_id = ai_data["beard_id"]
+            
+        final_reason = ai_data.get("reason", final_reason)
+        final_tips = ai_data.get("productTips", final_tips)
+        final_density = ai_data.get("densityLevel", final_density)
 
     except Exception as e:
-    
+        print(f"⚠️ AI 推理失败，已降级为默认方案: {e}")
+        # 如果 AI 挂了，强行给个胡子，防前端空白
+        if final_beard_id == "clean_shave":
+            final_beard_id = "goatee"
     print(f"⚠️ AI 推理失败，已降级为默认方案: {e}")
         # 你的兜底代码...
     # 5. 组装最终 JSON
