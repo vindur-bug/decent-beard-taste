@@ -5,7 +5,7 @@ import json
 from openai import OpenAI
 
 # 从环境变量读取密钥，绝对不能写死在这里！
-print("=== 检查 DashScope Key ===", "已加载" if dashscope.api_key else "未加载，为 None！")
+
 
 
 def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "medium") -> dict:
