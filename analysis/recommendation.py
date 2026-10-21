@@ -178,3 +178,6 @@ def generate_recommendation(face_shape: str, hairline: str, time_pref: str = "me
 
     def recommend_styles(face_shape: str, density: str = "medium") -> dict:
       return generate_recommendation(face_shape, "normal", density)
+    # 兼容 main.py 接口调用的函数
+def recommend_styles(face_shape: str, density: str = "medium") -> dict:
+    return generate_recommendation(face_shape, "normal", density)
