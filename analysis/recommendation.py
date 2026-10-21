@@ -5,7 +5,6 @@ import json
 from openai import OpenAI
 
 # 从环境变量读取密钥，绝对不能写死在这里！
-dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
 print("=== 检查 DashScope Key ===", "已加载" if dashscope.api_key else "未加载，为 None！")
 
 
